@@ -63,11 +63,7 @@ def batch_norm_relu(inputs,
   else:
     gamma_initializer = tf.ones_initializer()
 
-  if data_format == 'channels_first':
-    axis = 1
-  else:
-    axis = 3
-
+  axis = 1 if data_format == 'channels_first' else 3
   inputs = tf.layers.batch_normalization(
       inputs=inputs,
       axis=axis,
@@ -103,14 +99,10 @@ def fixed_padding(inputs, kernel_size, data_format='channels_last'):
   pad_total = kernel_size - 1
   pad_beg = pad_total // 2
   pad_end = pad_total - pad_beg
-  if data_format == 'channels_first':
-    padded_inputs = tf.pad(
-        inputs, [[0, 0], [0, 0], [pad_beg, pad_end], [pad_beg, pad_end]])
-  else:
-    padded_inputs = tf.pad(
-        inputs, [[0, 0], [pad_beg, pad_end], [pad_beg, pad_end], [0, 0]])
-
-  return padded_inputs
+  return (
+      tf.pad(inputs, [[0, 0], [0, 0], [pad_beg, pad_end], [pad_beg, pad_end]])
+      if data_format == 'channels_first' else tf.pad(
+          inputs, [[0, 0], [pad_beg, pad_end], [pad_beg, pad_end], [0, 0]]))
 
 
 def conv2d_fixed_padding(inputs,
@@ -506,16 +498,15 @@ def class_net(images, level, num_classes, num_anchors=6, is_training_bn=False):
     images = batch_norm_relu(images, is_training_bn, relu=True, init_zero=False,
                              name='class-%d-bn-%d' % (i, level))
 
-  classes = tf.layers.conv2d(
+  return tf.layers.conv2d(
       images,
       num_classes * num_anchors,
       kernel_size=(3, 3),
       bias_initializer=tf.constant_initializer(-np.log((1 - 0.01) / 0.01)),
       kernel_initializer=tf.random_normal_initializer(stddev=0.01),
       padding='same',
-      name='class-predict')
-
-  return classes
+      name='class-predict',
+  )
 
 
 def box_net(images, level, num_anchors=6, is_training_bn=False):
@@ -536,16 +527,15 @@ def box_net(images, level, num_anchors=6, is_training_bn=False):
     images = batch_norm_relu(images, is_training_bn, relu=True, init_zero=False,
                              name='box-%d-bn-%d' % (i, level))
 
-  boxes = tf.layers.conv2d(
+  return tf.layers.conv2d(
       images,
       4 * num_anchors,
       kernel_size=(3, 3),
       bias_initializer=tf.zeros_initializer(),
       kernel_initializer=tf.random_normal_initializer(stddev=0.01),
       padding='same',
-      name='box-predict')
-
-  return boxes
+      name='box-predict',
+  )
 
 
 def resnet_fpn(features,
@@ -556,7 +546,7 @@ def resnet_fpn(features,
                use_nearest_upsampling=True):
   """ResNet feature pyramid networks."""
   # upward layers
-  with tf.variable_scope('resnet%s' % resnet_depth):
+  with tf.variable_scope(f'resnet{resnet_depth}'):
     resnet_fn = resnet_v1(resnet_depth)
     u2, u3, u4, u5 = resnet_fn(features, is_training_bn)
 
@@ -568,16 +558,16 @@ def resnet_fpn(features,
   }
 
   with tf.variable_scope('resnet_fpn'):
-    # lateral connections
-    feats_lateral = {}
-    for level in range(min_level, _RESNET_MAX_LEVEL + 1):
-      feats_lateral[level] = tf.layers.conv2d(
-          feats_bottom_up[level],
-          filters=256,
-          kernel_size=(1, 1),
-          padding='same',
-          name='l%d' % level)
-
+    feats_lateral = {
+        level: tf.layers.conv2d(
+            feats_bottom_up[level],
+            filters=256,
+            kernel_size=(1, 1),
+            padding='same',
+            name='l%d' % level,
+        )
+        for level in range(min_level, _RESNET_MAX_LEVEL + 1)
+    }
     # add top-down path
     feats = {_RESNET_MAX_LEVEL: feats_lateral[_RESNET_MAX_LEVEL]}
     for level in range(_RESNET_MAX_LEVEL - 1, min_level - 1, -1):
@@ -681,6 +671,7 @@ def remove_variables(variables, resnet_depth=50):
     var_list: a list containing variables for training
 
   """
-  var_list = [v for v in variables
-              if v.name.find('resnet%s/conv2d/' % resnet_depth) == -1]
-  return var_list
+  return [
+      v for v in variables
+      if v.name.find(f'resnet{resnet_depth}/conv2d/') == -1
+  ]

@@ -52,7 +52,7 @@ def get_ema_vars():
 
 def get_ckt_var_map(ckpt_path, ckpt_scope, var_scope):
   """Get a var map for restoring from pretrained checkpoints."""
-  tf.logging.info('Init model from checkpoint {}'.format(ckpt_path))
+  tf.logging.info(f'Init model from checkpoint {ckpt_path}')
   if not ckpt_scope.endswith('/') or not var_scope.endswith('/'):
     raise ValueError('Please specific scope name ending with /')
   if ckpt_scope.startswith('/'):
@@ -67,24 +67,22 @@ def get_ckt_var_map(ckpt_path, ckpt_scope, var_scope):
   ckpt_var_names = set(reader.get_variable_to_shape_map().keys())
   for v in model_vars:
     if not v.op.name.startswith(var_scope):
-      tf.logging.info('skip {} -- does not match scope {}'.format(
-          v.op.name, var_scope))
+      tf.logging.info(f'skip {v.op.name} -- does not match scope {var_scope}')
     ckpt_var = ckpt_scope + v.op.name[len(var_scope):]
     if ckpt_var not in ckpt_var_names:
       if v.op.name.endswith('/ExponentialMovingAverage'):
         ckpt_var = ckpt_scope + v.op.name[:-len('/ExponentialMovingAverage')]
-      if ckpt_var not in ckpt_var_names:
-        tf.logging.info('skip {} ({}) -- not in ckpt'.format(
-            v.op.name, ckpt_var))
-        continue
-    tf.logging.info('Init {} from ckpt var {}'.format(v.op.name, ckpt_var))
+    if ckpt_var not in ckpt_var_names:
+      tf.logging.info(f'skip {v.op.name} ({ckpt_var}) -- not in ckpt')
+      continue
+    tf.logging.info(f'Init {v.op.name} from ckpt var {ckpt_var}')
     var_map[ckpt_var] = v
   return var_map
 
 
 def get_ckt_var_map_ema(ckpt_path, ckpt_scope, var_scope):
   """Get a ema var map for restoring from pretrained checkpoints."""
-  tf.logging.info('Init model from checkpoint {}'.format(ckpt_path))
+  tf.logging.info(f'Init model from checkpoint {ckpt_path}')
   if not ckpt_scope.endswith('/') or not var_scope.endswith('/'):
     raise ValueError('Please specific scope name ending with /')
   if ckpt_scope.startswith('/'):
@@ -99,25 +97,22 @@ def get_ckt_var_map_ema(ckpt_path, ckpt_scope, var_scope):
   ckpt_var_names = set(reader.get_variable_to_shape_map().keys())
   for v in model_vars:
     if not v.op.name.startswith(var_scope):
-      tf.logging.info('skip {} -- does not match scope {}'.format(
-          v.op.name, var_scope))
+      tf.logging.info(f'skip {v.op.name} -- does not match scope {var_scope}')
 
     if v.op.name.endswith('/ExponentialMovingAverage'):
-      tf.logging.info('skip ema var {}'.format(v.op.name))
+      tf.logging.info(f'skip ema var {v.op.name}')
       continue
 
     ckpt_var = ckpt_scope + v.op.name[len(var_scope):]
-    ckpt_var_ema = ckpt_var + '/ExponentialMovingAverage'
+    ckpt_var_ema = f'{ckpt_var}/ExponentialMovingAverage'
     if ckpt_var_ema in ckpt_var_names:
       var_map[ckpt_var_ema] = v
-      tf.logging.info('Init {} from ckpt var {}'.format(
-          v.op.name, ckpt_var_ema))
+      tf.logging.info(f'Init {v.op.name} from ckpt var {ckpt_var_ema}')
     elif ckpt_var in ckpt_var_names:
       var_map[ckpt_var] = v
-      tf.logging.info('Init {} from ckpt var {}'.format(v.op.name, ckpt_var))
+      tf.logging.info(f'Init {v.op.name} from ckpt var {ckpt_var}')
     else:
-      tf.logging.info('skip {} ({}) -- not in ckpt'.format(
-          v.op.name, ckpt_var))
+      tf.logging.info(f'skip {v.op.name} ({ckpt_var}) -- not in ckpt')
   return var_map
 
 
@@ -151,24 +146,21 @@ class TpuBatchNormalization(tf.layers.BatchNormalization):
         inputs, reduction_axes, keep_dims=keep_dims)
 
     num_shards = tpu_function.get_tpu_context().number_of_shards or 1
-    if num_shards <= 8:  # Skip cross_replica for 2x2 or smaller slices.
-      num_shards_per_group = 1
-    else:
-      num_shards_per_group = max(8, num_shards // 8)
-    tf.logging.info('TpuBatchNormalization with num_shards_per_group {}'.format(
-        num_shards_per_group))
-    if num_shards_per_group > 1:
-      # Compute variance using: Var[X]= E[X^2] - E[X]^2.
-      shard_square_of_mean = tf.math.square(shard_mean)
-      shard_mean_of_square = shard_variance + shard_square_of_mean
-      group_mean = self._cross_replica_average(
-          shard_mean, num_shards_per_group)
-      group_mean_of_square = self._cross_replica_average(
-          shard_mean_of_square, num_shards_per_group)
-      group_variance = group_mean_of_square - tf.math.square(group_mean)
-      return (group_mean, group_variance)
-    else:
+    num_shards_per_group = 1 if num_shards <= 8 else max(8, num_shards // 8)
+    tf.logging.info(
+        f'TpuBatchNormalization with num_shards_per_group {num_shards_per_group}'
+    )
+    if num_shards_per_group <= 1:
       return (shard_mean, shard_variance)
+    # Compute variance using: Var[X]= E[X^2] - E[X]^2.
+    shard_square_of_mean = tf.math.square(shard_mean)
+    shard_mean_of_square = shard_variance + shard_square_of_mean
+    group_mean = self._cross_replica_average(
+        shard_mean, num_shards_per_group)
+    group_mean_of_square = self._cross_replica_average(
+        shard_mean_of_square, num_shards_per_group)
+    group_variance = group_mean_of_square - tf.math.square(group_mean)
+    return (group_mean, group_variance)
 
 
 class BatchNormalization(tf.layers.BatchNormalization):
@@ -181,10 +173,7 @@ class BatchNormalization(tf.layers.BatchNormalization):
 
 
 def batch_norm_class(is_training):
-  if is_training:
-    return TpuBatchNormalization
-  else:
-    return BatchNormalization
+  return TpuBatchNormalization if is_training else BatchNormalization
 
 
 def tpu_batch_normalization(inputs, training=False, **kwargs):
@@ -219,11 +208,7 @@ def batch_norm_relu(inputs,
   else:
     gamma_initializer = tf.ones_initializer()
 
-  if data_format == 'channels_first':
-    axis = 1
-  else:
-    axis = 3
-
+  axis = 1 if data_format == 'channels_first' else 3
   inputs = tpu_batch_normalization(
       inputs=inputs,
       axis=axis,
@@ -251,11 +236,7 @@ def drop_connect(inputs, is_training, survival_prob):
   random_tensor = survival_prob
   random_tensor += tf.random_uniform([batch_size, 1, 1, 1], dtype=inputs.dtype)
   binary_tensor = tf.floor(random_tensor)
-  # Unlike conventional way that multiply survival_prob at test time, here we
-  # divide survival_prob at training time, such that no addition compute is
-  # needed at test time.
-  output = tf.div(inputs, survival_prob) * binary_tensor
-  return output
+  return tf.div(inputs, survival_prob) * binary_tensor
 
 
 def num_params_flops(readable_format=True):
@@ -278,13 +259,13 @@ dense_kernel_initializer = tf.initializers.variance_scaling()
 
 def scalar(name, tensor):
   """Stores a (name, Tensor) tuple in a custom collection."""
-  tf.logging.info('Adding summary {}'.format((name, tensor)))
+  tf.logging.info(f'Adding summary {(name, tensor)}')
   tf.add_to_collection('edsummaries', (name, tf.reduce_mean(tensor)))
 
 
 def get_scalar_summaries():
   """Returns the list of (name, Tensor) summaries recorded by scalar()."""
-  tf.logging.info('get summaries {}'.format(tf.get_collection('edsummaries')))
+  tf.logging.info(f"get summaries {tf.get_collection('edsummaries')}")
   return tf.get_collection('edsummaries')
 
 
@@ -324,13 +305,12 @@ def archive_ckpt(ckpt_eval, ckpt_objective, ckpt_path):
     with tf.io.gfile.GFile(saved_objective_path, 'r') as f:
       saved_objective = float(f.read())
   if saved_objective > ckpt_objective:
-    tf.logging.info('Ckpt {} is worse than {}'.format(
-        ckpt_objective, saved_objective))
+    tf.logging.info(f'Ckpt {ckpt_objective} is worse than {saved_objective}')
     return False
 
-  filenames = tf.io.gfile.glob(ckpt_path + '.*')
+  filenames = tf.io.gfile.glob(f'{ckpt_path}.*')
   if filenames is None:
-    tf.logging.info('No files to copy for checkpoint {}'.format(ckpt_path))
+    tf.logging.info(f'No files to copy for checkpoint {ckpt_path}')
     return False
 
   # clear up the backup folder.
@@ -341,7 +321,7 @@ def archive_ckpt(ckpt_eval, ckpt_objective, ckpt_path):
   # rename the old checkpoints to backup folder.
   dst_dir = os.path.join(ckpt_dir, 'archive')
   if tf.io.gfile.exists(dst_dir):
-    tf.logging.info('mv {} to {}'.format(dst_dir, backup_dir))
+    tf.logging.info(f'mv {dst_dir} to {backup_dir}')
     tf.io.gfile.rename(dst_dir, backup_dir)
 
   # Write checkpoints.
@@ -356,11 +336,11 @@ def archive_ckpt(ckpt_eval, ckpt_objective, ckpt_path):
   with tf.io.gfile.GFile(os.path.join(dst_dir, 'checkpoint'), 'w') as f:
     f.write(str(ckpt_state))
   with tf.io.gfile.GFile(os.path.join(dst_dir, 'best_eval.txt'), 'w') as f:
-    f.write('%s' % ckpt_eval)
+    f.write(f'{ckpt_eval}')
 
   # Update the best objective.
   with tf.io.gfile.GFile(saved_objective_path, 'w') as f:
     f.write('%f' % ckpt_objective)
 
-  tf.logging.info('Copying checkpoint {} to {}'.format(ckpt_path, dst_dir))
+  tf.logging.info(f'Copying checkpoint {ckpt_path} to {dst_dir}')
   return True

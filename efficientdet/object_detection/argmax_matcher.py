@@ -84,10 +84,10 @@ class ArgMaxMatcher(matcher.Matcher):
     self._matched_threshold = matched_threshold
     if unmatched_threshold is None:
       self._unmatched_threshold = matched_threshold
+    elif unmatched_threshold > matched_threshold:
+      raise ValueError('unmatched_threshold needs to be smaller or equal'
+                       'to matched_threshold')
     else:
-      if unmatched_threshold > matched_threshold:
-        raise ValueError('unmatched_threshold needs to be smaller or equal'
-                         'to matched_threshold')
       self._unmatched_threshold = unmatched_threshold
     if not negatives_lower_than_unmatched:
       if self._unmatched_threshold == self._matched_threshold:

@@ -117,7 +117,7 @@ def learning_rate_schedule(params, global_step):
                               params['lr_warmup_step'],
                               params['total_steps'], global_step)
   else:
-    raise ValueError('unknown lr_decay_method: {}'.format(lr_decay_method))
+    raise ValueError(f'unknown lr_decay_method: {lr_decay_method}')
 
 
 def focal_loss(logits, targets, alpha, gamma, normalizer):
@@ -188,9 +188,7 @@ def _classification_loss(cls_outputs,
                          gamma=2.0):
   """Computes classification loss."""
   normalizer = num_positives
-  classification_loss = focal_loss(cls_outputs, cls_targets, alpha, gamma,
-                                   normalizer)
-  return classification_loss
+  return focal_loss(cls_outputs, cls_targets, alpha, gamma, normalizer)
 
 
 def _box_loss(box_outputs, box_targets, num_positives, delta=0.1):
@@ -352,9 +350,8 @@ def coco_metric_fn(batch_size, anchor_labeler, filename=None, **kwargs):
     )
     detections_bs.append(detections)
   eval_metric = coco_metric.EvaluationMetric(filename=filename)
-  coco_metrics = eval_metric.estimator_metric_fn(detections_bs,
-                                                 kwargs['groundtruth_data'])
-  return coco_metrics
+  return eval_metric.estimator_metric_fn(detections_bs,
+                                         kwargs['groundtruth_data'])
 
 
 def reg_l2_loss(weight_decay, regex=r'.*(kernel|weight):0$'):
@@ -517,16 +514,21 @@ def _model_fn(features, labels, mode, params, model, variable_filter_fn=None):
   if params['backbone_ckpt'] and mode == tf.estimator.ModeKeys.TRAIN:
     def scaffold_fn():
       """Loads pretrained model through scaffold function."""
-      tf.logging.info('restore variables from %s' % params['backbone_ckpt'])
+      tf.logging.info(f"restore variables from {params['backbone_ckpt']}")
       if params['ckpt_var_scope'] is None:
         ckpt_scope = params['backbone_name']  # Use backbone name in default.
       else:
         ckpt_scope = params['ckpt_var_scope']
       tf.train.init_from_checkpoint(
           params['backbone_ckpt'],
-          utils.get_ckt_var_map(params['backbone_ckpt'], ckpt_scope + '/',
-                                params['backbone_name'] + '/'))
+          utils.get_ckt_var_map(
+              params['backbone_ckpt'],
+              f'{ckpt_scope}/',
+              params['backbone_name'] + '/',
+          ),
+      )
       return tf.train.Scaffold()
+
   elif mode == tf.estimator.ModeKeys.EVAL and moving_average_decay:
     def scaffold_fn():
       """Load moving average variables for eval."""

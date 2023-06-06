@@ -270,7 +270,7 @@ def main(argv):
           input_fn=dataloader.InputReader(FLAGS.validation_file_pattern,
                                           is_training=False),
           steps=FLAGS.eval_samples//FLAGS.eval_batch_size)
-      tf.logging.info('Eval results: %s' % eval_results)
+      tf.logging.info(f'Eval results: {eval_results}')
       ckpt = tf.train.latest_checkpoint(FLAGS.model_dir)
       utils.archive_ckpt(eval_results, eval_results['AP'], ckpt)
 
@@ -314,7 +314,7 @@ def main(argv):
             input_fn=dataloader.InputReader(FLAGS.validation_file_pattern,
                                             is_training=False),
             steps=FLAGS.eval_samples//FLAGS.eval_batch_size)
-        tf.logging.info('Eval results: %s' % eval_results)
+        tf.logging.info(f'Eval results: {eval_results}')
         utils.archive_ckpt(eval_results, eval_results['AP'], ckpt)
 
         # Terminate eval job when final checkpoint is reached
@@ -331,8 +331,7 @@ def main(argv):
         # sometimes the TPU worker does not finish initializing until long after
         # the CPU job tells it to start evaluating. In this case, the checkpoint
         # file could have been deleted already.
-        tf.logging.info('Checkpoint %s no longer exists, skipping checkpoint' %
-                        ckpt)
+        tf.logging.info(f'Checkpoint {ckpt} no longer exists, skipping checkpoint')
 
   elif FLAGS.mode == 'train_and_eval':
     for cycle in range(FLAGS.num_epochs):
@@ -370,7 +369,7 @@ def main(argv):
           input_fn=dataloader.InputReader(FLAGS.validation_file_pattern,
                                           is_training=False),
           steps=FLAGS.eval_samples//FLAGS.eval_batch_size)
-      tf.logging.info('Evaluation results: %s' % eval_results)
+      tf.logging.info(f'Evaluation results: {eval_results}')
       ckpt = tf.train.latest_checkpoint(FLAGS.model_dir)
       utils.archive_ckpt(eval_results, eval_results['AP'], ckpt)
 

@@ -212,10 +212,8 @@ class TargetAssigner(object):
     unmatched_ignored_reg_targets = tf.tile(
         self._default_regression_target(), [match_results_shape[0], 1])
     matched_anchors_mask = match.matched_column_indicator()
-    reg_targets = tf.where(matched_anchors_mask,
-                           matched_reg_targets,
-                           unmatched_ignored_reg_targets)
-    return reg_targets
+    return tf.where(matched_anchors_mask, matched_reg_targets,
+                    unmatched_ignored_reg_targets)
 
   def _default_regression_target(self):
     """Returns the default target for anchors to regress to.

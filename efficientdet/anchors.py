@@ -180,8 +180,7 @@ def _generate_anchor_boxes(image_size, anchor_scale, anchor_configs):
     boxes_level = np.concatenate(boxes_level, axis=1)
     boxes_all.append(boxes_level.reshape([-1, 4]))
 
-  anchor_boxes = np.vstack(boxes_all)
-  return anchor_boxes
+  return np.vstack(boxes_all)
 
 
 def _generate_detections(cls_outputs, box_outputs, anchor_boxes, indices,
@@ -250,8 +249,8 @@ def _generate_detections(cls_outputs, box_outputs, anchor_boxes, indices,
     detections = np.vstack(detections)
     # take final 100 detections
     indices = np.argsort(-detections[:, -2])
-    detections = np.array(
-        detections[indices[0:MAX_DETECTIONS_PER_IMAGE]], dtype=np.float32)
+    detections = np.array(detections[indices[:MAX_DETECTIONS_PER_IMAGE]],
+                          dtype=np.float32)
     # Add dummy detections to fill up to 100 detections
     n = max(MAX_DETECTIONS_PER_IMAGE - len(detections), 0)
     detections_dummy = _generate_dummy_detections(n)

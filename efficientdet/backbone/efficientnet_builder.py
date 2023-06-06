@@ -89,7 +89,7 @@ class BlockDecoder(object):
         'r%d' % block.num_repeat,
         'k%d' % block.kernel_size,
         's%d%d' % (block.strides[0], block.strides[1]),
-        'e%s' % block.expand_ratio,
+        f'e{block.expand_ratio}',
         'i%d' % block.input_filters,
         'o%d' % block.output_filters,
         'c%d' % block.conv_type,
@@ -97,7 +97,7 @@ class BlockDecoder(object):
         'p%d' % block.super_pixel,
     ]
     if block.se_ratio > 0 and block.se_ratio <= 1:
-      args.append('se%s' % block.se_ratio)
+      args.append(f'se{block.se_ratio}')
     if block.id_skip is False:  # pylint: disable=g-bool-id-comparison
       args.append('noskip')
     if block.condconv:
@@ -114,10 +114,9 @@ class BlockDecoder(object):
       A list of namedtuples to represent blocks arguments.
     """
     assert isinstance(string_list, list)
-    blocks_args = []
-    for block_string in string_list:
-      blocks_args.append(self._decode_block_string(block_string))
-    return blocks_args
+    return [
+        self._decode_block_string(block_string) for block_string in string_list
+    ]
 
   def encode(self, blocks_args):
     """Encodes a list of Blocks to a list of strings.
@@ -127,10 +126,7 @@ class BlockDecoder(object):
     Returns:
       a list of strings, each string is a notation of block.
     """
-    block_strings = []
-    for block in blocks_args:
-      block_strings.append(self._encode_block_string(block))
-    return block_strings
+    return [self._encode_block_string(block) for block in blocks_args]
 
 
 def swish(features, use_native=True, use_hard=False):
@@ -178,7 +174,7 @@ def efficientnet(width_coefficient=None,
                  dropout_rate=0.2,
                  survival_prob=0.8):
   """Creates a efficientnet model."""
-  global_params = efficientnet_model.GlobalParams(
+  return efficientnet_model.GlobalParams(
       blocks_args=_DEFAULT_BLOCKS_ARGS,
       batch_norm_momentum=0.99,
       batch_norm_epsilon=1e-3,
@@ -195,20 +191,19 @@ def efficientnet(width_coefficient=None,
       # The alternative is tf.layers.BatchNormalization.
       batch_norm=utils.TpuBatchNormalization,  # TPU-specific requirement.
       use_se=True,
-      clip_projection_output=False)
-  return global_params
+      clip_projection_output=False,
+  )
 
 
 def get_model_params(model_name, override_params):
   """Get the block args and global params for a given model."""
-  if model_name.startswith('efficientnet'):
-    width_coefficient, depth_coefficient, _, dropout_rate = (
-        efficientnet_params(model_name))
-    global_params = efficientnet(
-        width_coefficient, depth_coefficient, dropout_rate)
-  else:
-    raise NotImplementedError('model name is not pre-defined: %s' % model_name)
+  if not model_name.startswith('efficientnet'):
+    raise NotImplementedError(f'model name is not pre-defined: {model_name}')
 
+  width_coefficient, depth_coefficient, _, dropout_rate = (
+      efficientnet_params(model_name))
+  global_params = efficientnet(
+      width_coefficient, depth_coefficient, dropout_rate)
   if override_params:
     # ValueError will be raised here if override_params has fields not included
     # in global_params.
@@ -263,8 +258,8 @@ def build_model(images,
     if not override_params:
       override_params = {}
     override_params['batch_norm'] = utils.BatchNormalization
-    if fine_tuning:
-      override_params['relu_fn'] = functools.partial(swish, use_native=False)
+  if fine_tuning:
+    override_params['relu_fn'] = functools.partial(swish, use_native=False)
   blocks_args, global_params = get_model_params(model_name, override_params)
 
   if model_dir:

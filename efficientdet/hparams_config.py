@@ -62,16 +62,16 @@ class Config(object):
       return
 
     for k, v in six.iteritems(config_dict):
-      if k not in self.__dict__.keys():
-        if allow_new_keys:
-          self.__setattr__(k, v)
-        else:
-          raise KeyError('Key `{}` does not exist for overriding. '.format(k))
-      else:
+      if k in self.__dict__.keys():
         if isinstance(v, dict):
           self.__dict__[k]._update(v, allow_new_keys)
         else:
           self.__dict__[k] = copy.deepcopy(v)
+
+      elif allow_new_keys:
+        self.__setattr__(k, v)
+      else:
+        raise KeyError(f'Key `{k}` does not exist for overriding. ')
 
   def get(self, k, default_value=None):
     return self.__dict__.get(k, default_value)
@@ -87,7 +87,7 @@ class Config(object):
     elif isinstance(config_dict_or_str, dict):
       config_dict = config_dict_or_str
     else:
-      raise ValueError('Unknown value type: {}'.format(config_dict_or_str))
+      raise ValueError(f'Unknown value type: {config_dict_or_str}')
 
     self._update(config_dict, allow_new_keys=False)
 
@@ -102,17 +102,14 @@ class Config(object):
         config_dict[k.strip()] = eval_str_fn(v.strip())
       return config_dict
     except:
-      raise ValueError('Invalid config_str: {}'.format(config_str))
+      raise ValueError(f'Invalid config_str: {config_str}')
 
   def as_dict(self):
     """Returns a dict representation."""
-    config_dict = {}
-    for k, v in six.iteritems(self.__dict__):
-      if isinstance(v, Config):
-        config_dict[k] = v.as_dict()
-      else:
-        config_dict[k] = copy.deepcopy(v)
-    return config_dict
+    return {
+        k: v.as_dict() if isinstance(v, Config) else copy.deepcopy(v)
+        for k, v in six.iteritems(self.__dict__)
+    }
 
 
 # pylint: enable=protected-access

@@ -540,7 +540,7 @@ class Model(tf.keras.Model):
       output_filters = round_filters(block_args.output_filters,
                                      self._global_params)
       kernel_size = block_args.kernel_size
-      if self._fix_head_stem and (i == 0 or i == len(self._blocks_args) - 1):
+      if self._fix_head_stem and i in [0, len(self._blocks_args) - 1]:
         repeats = block_args.num_repeat
       else:
         repeats = round_repeats(block_args.num_repeat, self._global_params)
@@ -580,9 +580,9 @@ class Model(tf.keras.Model):
         block_args = block_args._replace(
             input_filters=block_args.output_filters, strides=[1, 1])
         # pylint: enable=protected-access
-      for _ in xrange(block_args.num_repeat - 1):
-        self._blocks.append(conv_block(block_args, self._global_params))
-
+      self._blocks.extend(
+          conv_block(block_args, self._global_params)
+          for _ in xrange(block_args.num_repeat - 1))
     # Head part.
     self._conv_head = tf.layers.Conv2D(
         filters=round_filters(1280, self._global_params, self._fix_head_stem),
@@ -646,14 +646,14 @@ class Model(tf.keras.Model):
       # the first reduction point.
       if (block.block_args().super_pixel == 1 and idx == 0):
         reduction_idx += 1
-        self.endpoints['reduction_%s' % reduction_idx] = outputs
+        self.endpoints[f'reduction_{reduction_idx}'] = outputs
 
       elif ((idx == len(self._blocks) - 1) or
             self._blocks[idx + 1].block_args().strides[0] > 1):
         is_reduction = True
         reduction_idx += 1
 
-      with tf.variable_scope('blocks_%s' % idx):
+      with tf.variable_scope(f'blocks_{idx}'):
         survival_prob = self._global_params.survival_prob
         if survival_prob:
           drop_rate = 1.0 - survival_prob
@@ -661,14 +661,14 @@ class Model(tf.keras.Model):
           logging.info('block_%s survival_prob: %s', idx, survival_prob)
         outputs = block.call(
             outputs, training=training, survival_prob=survival_prob)
-        self.endpoints['block_%s' % idx] = outputs
+        self.endpoints[f'block_{idx}'] = outputs
         if is_reduction:
-          self.endpoints['reduction_%s' % reduction_idx] = outputs
+          self.endpoints[f'reduction_{reduction_idx}'] = outputs
         if block.endpoints:
           for k, v in six.iteritems(block.endpoints):
-            self.endpoints['block_%s/%s' % (idx, k)] = v
+            self.endpoints[f'block_{idx}/{k}'] = v
             if is_reduction:
-              self.endpoints['reduction_%s/%s' % (reduction_idx, k)] = v
+              self.endpoints[f'reduction_{reduction_idx}/{k}'] = v
     self.endpoints['features'] = outputs
 
     if not features_only:

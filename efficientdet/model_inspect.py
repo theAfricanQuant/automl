@@ -100,12 +100,11 @@ class ModelInspector(object):
     print('backbone+fpn+box params/flops = {:.6f}M, {:.9f}B'.format(
         *utils.num_params_flops()))
 
-    all_outputs = list(cls_outputs.values()) + list(box_outputs.values())
-    return all_outputs
+    return list(cls_outputs.values()) + list(box_outputs.values())
 
   def build_and_save_model(self):
     """build and save the model into self.logdir."""
-    with tf.Graph().as_default(), tf.Session() as sess:
+    with (tf.Graph().as_default(), tf.Session() as sess):
       # Build model with inputs and labels.
       inputs = tf.placeholder(tf.float32, name='input', shape=self.inputs_shape)
       outputs = self.build_model(inputs, is_training=False)
@@ -120,7 +119,7 @@ class ModelInspector(object):
       all_saver = tf.train.Saver(save_relative_paths=True)
       all_saver.save(sess, os.path.join(self.logdir, self.model_name))
 
-      tf_graph = os.path.join(self.logdir, self.model_name + '_train.pb')
+      tf_graph = os.path.join(self.logdir, f'{self.model_name}_train.pb')
       with tf.io.gfile.GFile(tf_graph, 'wb') as f:
         f.write(sess.graph_def.SerializeToString())
 
@@ -143,7 +142,7 @@ class ModelInspector(object):
     saver.restore(sess, checkpoint)
 
     if export_ckpt:
-      print('export model to {}'.format(export_ckpt))
+      print(f'export model to {export_ckpt}')
       if ema_assign_op is not None:
         sess.run(ema_assign_op)
       saver = tf.train.Saver(max_to_keep=1, save_relative_paths=True)
@@ -160,12 +159,12 @@ class ModelInspector(object):
 
   def freeze_model(self) -> Tuple[Text, Text]:
     """Freeze model and convert them into tflite and tf graph."""
-    with tf.Graph().as_default(), tf.Session() as sess:
+    with (tf.Graph().as_default(), tf.Session() as sess):
       inputs = tf.placeholder(tf.float32, name='input', shape=self.inputs_shape)
       outputs = self.build_model(inputs, is_training=False)
 
       checkpoint = tf.train.latest_checkpoint(self.logdir)
-      tf.logging.info('Loading checkpoint: {}'.format(checkpoint))
+      tf.logging.info(f'Loading checkpoint: {checkpoint}')
       saver = tf.train.Saver()
 
       # Restore the Variables from the checkpoint and freeze the Graph.
@@ -186,7 +185,7 @@ class ModelInspector(object):
       graphdef = self.freeze_model()
 
     if num_threads > 0:
-      print('num_threads for benchmarking: {}'.format(num_threads))
+      print(f'num_threads for benchmarking: {num_threads}')
       sess_config = tf.ConfigProto(
           intra_op_parallelism_threads=num_threads,
           inter_op_parallelism_threads=1)
@@ -199,7 +198,7 @@ class ModelInspector(object):
       sess_config.graph_options.optimizer_options.global_jit_level = (
           tf.OptimizerOptions.ON_2)
 
-    with tf.Graph().as_default(), tf.Session(config=sess_config) as sess:
+    with (tf.Graph().as_default(), tf.Session(config=sess_config) as sess):
       inputs = tf.placeholder(tf.float32, name='input', shape=self.inputs_shape)
       output = self.build_model(inputs, is_training=False)
 
@@ -218,7 +217,7 @@ class ModelInspector(object):
         start_time = time.time()
         sess.run(output, feed_dict={inputs: img})
         print('Warm up: {} {:.4f}s'.format(i, time.time() - start_time))
-      print('Start benchmark runs total={}'.format(bm_runs))
+      print(f'Start benchmark runs total={bm_runs}')
       timev = []
       for i in range(bm_runs):
         if trace_filename and i == (bm_runs // 2):
@@ -227,7 +226,7 @@ class ModelInspector(object):
           run_metadata = tf.RunMetadata()
           sess.run(output, feed_dict={inputs: img},
                    options=run_options, run_metadata=run_metadata)
-          tf.logging.info('Dumping trace to %s' % trace_filename)
+          tf.logging.info(f'Dumping trace to {trace_filename}')
           trace_dir = os.path.dirname(trace_filename)
           if not tf.io.gfile.exists(trace_dir):
             tf.io.gfile.makedirs(trace_dir)
@@ -255,8 +254,7 @@ class ModelInspector(object):
         input_graph_def=graph_def,
         precision_mode=self.tensorrt)
     infer_graph = converter.convert()
-    goutput = tf.import_graph_def(infer_graph, return_elements=fetches)
-    return goutput
+    return tf.import_graph_def(infer_graph, return_elements=fetches)
 
   def run_model(self, runmode, threads=0):
     """Run the model on devices."""

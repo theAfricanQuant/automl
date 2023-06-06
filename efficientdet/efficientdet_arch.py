@@ -68,9 +68,10 @@ def remove_variables(variables, resnet_depth=50):
     var_list: a list containing variables for training
 
   """
-  var_list = [v for v in variables
-              if v.name.find('resnet%s/conv2d/' % resnet_depth) == -1]
-  return var_list
+  return [
+      v for v in variables
+      if v.name.find(f'resnet{resnet_depth}/conv2d/') == -1
+  ]
 
 
 def resample_feature_map(feat, name, target_width, target_num_channels,
@@ -151,10 +152,9 @@ def _verify_feats_size(feats, input_size, min_level, max_level):
   ]
   for cnt, width in enumerate(expected_output_width):
     if feats[cnt].shape[1] != width:
-      raise ValueError('feats[{}] has shape {} but its width should be {}.'
-                       '(input_size: {}, min_level: {}, max_level: {}.)'.format(
-                           cnt, feats[cnt].shape, width, input_size, min_level,
-                           max_level))
+      raise ValueError(
+          f'feats[{cnt}] has shape {feats[cnt].shape} but its width should be {width}.(input_size: {input_size}, min_level: {min_level}, max_level: {max_level}.)'
+      )
 
 
 ###############################################################################
@@ -192,14 +192,14 @@ def class_net(images, level, num_classes, num_anchors, num_filters, is_training,
       images = utils.drop_connect(images, is_training, survival_prob)
       images = images + orig_images
 
-  classes = conv_op(
+  return conv_op(
       images,
       num_classes * num_anchors,
       kernel_size=3,
       bias_initializer=tf.constant_initializer(-np.log((1 - 0.01) / 0.01)),
       padding='same',
-      name='class-predict')
-  return classes
+      name='class-predict',
+  )
 
 
 def box_net(images, level, num_anchors, num_filters, is_training,
@@ -236,15 +236,14 @@ def box_net(images, level, num_anchors, num_filters, is_training,
       images = utils.drop_connect(images, is_training, survival_prob)
       images = images + orig_images
 
-  boxes = conv_op(
+  return conv_op(
       images,
       4 * num_anchors,
       kernel_size=3,
       bias_initializer=tf.zeros_initializer(),
       padding='same',
-      name='box-predict')
-
-  return boxes
+      name='box-predict',
+  )
 
 
 def build_class_and_box_outputs(feats, config):
@@ -310,29 +309,27 @@ def build_backbone(features, config):
   """
   backbone_name = config.backbone_name
   is_training_bn = config.is_training_bn
-  if 'efficientnet' in backbone_name:
-    override_params = {
-        'relu_fn': utils.backbone_relu_fn,
-        'batch_norm': utils.batch_norm_class(is_training_bn),
-    }
-    if 'b0' in backbone_name:
-      override_params['survival_prob'] = 0.0
-    if config.backbone_config is not None:
-      override_params['blocks_args'] = (
-          efficientnet_builder.BlockDecoder().encode(
-              config.backbone_config.blocks))
-    _, endpoints = efficientnet_builder.build_model_base(
-        features,
-        backbone_name,
-        training=is_training_bn,
-        override_params=override_params)
-    u2 = endpoints['reduction_2']
-    u3 = endpoints['reduction_3']
-    u4 = endpoints['reduction_4']
-    u5 = endpoints['reduction_5']
-  else:
-    raise ValueError(
-        'backbone model {} is not supported.'.format(backbone_name))
+  if 'efficientnet' not in backbone_name:
+    raise ValueError(f'backbone model {backbone_name} is not supported.')
+  override_params = {
+      'relu_fn': utils.backbone_relu_fn,
+      'batch_norm': utils.batch_norm_class(is_training_bn),
+  }
+  if 'b0' in backbone_name:
+    override_params['survival_prob'] = 0.0
+  if config.backbone_config is not None:
+    override_params['blocks_args'] = (
+        efficientnet_builder.BlockDecoder().encode(
+            config.backbone_config.blocks))
+  _, endpoints = efficientnet_builder.build_model_base(
+      features,
+      backbone_name,
+      training=is_training_bn,
+      override_params=override_params)
+  u2 = endpoints['reduction_2']
+  u3 = endpoints['reduction_3']
+  u4 = endpoints['reduction_4']
+  u5 = endpoints['reduction_5']
   return {2: u2, 3: u3, 4: u4, 5: u5}
 
 
@@ -348,8 +345,9 @@ def build_feature_network(features, config):
   """
   feats = []
   if config.min_level not in features.keys():
-    raise ValueError('features.keys ({}) should include min_level ({})'.format(
-        features.keys(), config.min_level))
+    raise ValueError(
+        f'features.keys ({features.keys()}) should include min_level ({config.min_level})'
+    )
 
   # Build additional input features that are not from backbone.
   for level in range(config.min_level, config.max_level + 1):
@@ -377,8 +375,8 @@ def build_feature_network(features, config):
 
   with tf.variable_scope('fpn_cells'):
     for rep in range(config.fpn_cell_repeats):
-      with tf.variable_scope('cell_{}'.format(rep)):
-        tf.logging.info('building cell {}'.format(rep))
+      with tf.variable_scope(f'cell_{rep}'):
+        tf.logging.info(f'building cell {rep}')
         new_feats = build_bifpn_layer(
             feats=feats,
             fpn_name=config.fpn_name,
@@ -455,24 +453,28 @@ def build_bifpn_layer(
     use_native_resize_op, conv_bn_relu_pattern, pooling_type):
   """Builds a feature pyramid given previous feature pyramid and config."""
   config = fpn_config or get_fpn_config(fpn_name)
-  tf.logging.info('building cell {} using config: {}'.format(cell_ind, config))
+  tf.logging.info(f'building cell {cell_ind} using config: {config}')
 
   num_output_connections = [0 for _ in feats]
   for i, fnode in enumerate(config.nodes):
-    with tf.variable_scope('fnode{}'.format(i)):
-      tf.logging.info('fnode {} : {}'.format(i, fnode))
+    with tf.variable_scope(f'fnode{i}'):
+      tf.logging.info(f'fnode {i} : {fnode}')
       new_node_width = int(fnode['width_ratio'] * input_size)
       nodes = []
       for idx, input_offset in enumerate(fnode['inputs_offsets']):
         input_node = feats[input_offset]
         num_output_connections[input_offset] += 1
         input_node = resample_feature_map(
-            input_node, '{}_{}_{}'.format(idx, input_offset, len(feats)),
-            new_node_width, fpn_num_filters,
-            apply_bn_for_resampling, is_training,
+            input_node,
+            f'{idx}_{input_offset}_{len(feats)}',
+            new_node_width,
+            fpn_num_filters,
+            apply_bn_for_resampling,
+            is_training,
             conv_after_downsample,
             use_native_resize_op,
-            pooling_type)
+            pooling_type,
+        )
         nodes.append(input_node)
 
       # Combine all nodes.
@@ -495,10 +497,9 @@ def build_bifpn_layer(
       elif config.weight_method == 'sum':
         new_node = tf.add_n(nodes)
       else:
-        raise ValueError(
-            'unknown weight_method {}'.format(config.weight_method))
+        raise ValueError(f'unknown weight_method {config.weight_method}')
 
-      with tf.variable_scope('op_after_combine{}'.format(len(feats))):
+      with tf.variable_scope(f'op_after_combine{len(feats)}'):
         if not conv_bn_relu_pattern:
           new_node = utils.relu_fn(new_node)
 
@@ -513,15 +514,17 @@ def build_bifpn_layer(
             filters=fpn_num_filters,
             kernel_size=(3, 3),
             padding='same',
-            use_bias=True if not conv_bn_relu_pattern else False,
-            name='conv')
+            use_bias=not conv_bn_relu_pattern,
+            name='conv',
+        )
 
         new_node = utils.batch_norm_relu(
             new_node,
             is_training_bn=is_training,
-            relu=False if not conv_bn_relu_pattern else True,
+            relu=bool(conv_bn_relu_pattern),
             data_format='channels_last',
-            name='bn')
+            name='bn',
+        )
 
       feats.append(new_node)
       num_output_connections.append(0)
@@ -531,7 +534,7 @@ def build_bifpn_layer(
     for i, fnode in enumerate(reversed(config.nodes)):
       if fnode['width_ratio'] == F(l):
         output_feats[l] = feats[-1 - i]
-  tf.logging.info('Output feature pyramid: {}'.format(output_feats))
+  tf.logging.info(f'Output feature pyramid: {output_feats}')
   return output_feats
 
 

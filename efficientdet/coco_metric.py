@@ -148,7 +148,7 @@ class EvaluationMetric(object):
         # Add annotations.
         indices = np.where(groundtruth_data[i, :, -1] > -1)[0]
         for data in groundtruth_data[i, indices]:
-          box = data[0:4]
+          box = data[:4]
           is_crowd = data[4]
           area = data[5]
           category_id = data[6]

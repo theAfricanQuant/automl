@@ -113,9 +113,8 @@ class InputProcessor(object):
     scaled_image = scaled_image[
         self._crop_offset_y:self._crop_offset_y + self._output_size,
         self._crop_offset_x:self._crop_offset_x + self._output_size, :]
-    output_image = tf.image.pad_to_bounding_box(
-        scaled_image, 0, 0, self._output_size, self._output_size)
-    return output_image
+    return tf.image.pad_to_bounding_box(scaled_image, 0, 0, self._output_size,
+                                        self._output_size)
 
 
 class DetectionInputProcessor(InputProcessor):

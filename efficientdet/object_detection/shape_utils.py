@@ -37,13 +37,12 @@ def assert_shape_equal(shape_a, shape_b):
   Raises:
     ValueError: When shapes are both static and unequal.
   """
-  if (all(isinstance(dim, int) for dim in shape_a) and
-      all(isinstance(dim, int) for dim in shape_b)):
-    if shape_a != shape_b:
-      raise ValueError('Unequal shapes {}, {}'.format(shape_a, shape_b))
-    else: return tf.no_op()
-  else:
+  if not all(isinstance(dim, int) for dim in shape_a) or not all(
+      isinstance(dim, int) for dim in shape_b):
     return tf.assert_equal(shape_a, shape_b)
+  if shape_a != shape_b:
+    raise ValueError(f'Unequal shapes {shape_a}, {shape_b}')
+  else: return tf.no_op()
 
 
 def combined_static_and_dynamic_shape(tensor):
